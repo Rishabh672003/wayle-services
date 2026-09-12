@@ -75,15 +75,15 @@ async fn sync_workspaces_state(runtime: &SyncRuntime) {
     };
 
     let current_workspaces = runtime.workspaces.get();
-    let mut current_by_id: HashMap<_, _> = current_workspaces
+    let mut current_by_address: HashMap<_, _> = current_workspaces
         .iter()
-        .map(|workspace| (workspace.id.get(), Arc::clone(workspace)))
+        .map(|workspace| (workspace.address.get(), Arc::clone(workspace)))
         .collect();
 
     let mut reconciled = Vec::with_capacity(live_workspaces.len());
     for workspace_data in live_workspaces {
-        let id = workspace_data.id;
-        if let Some(workspace) = current_by_id.remove(&id) {
+        let address = workspace_data.address.clone();
+        if let Some(workspace) = current_by_address.remove(&address) {
             workspace.update(workspace_data);
             reconciled.push(workspace);
             continue;

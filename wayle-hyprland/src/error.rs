@@ -2,7 +2,7 @@ use std::{io, string::FromUtf8Error};
 
 use tokio::sync::broadcast;
 
-use crate::{Address, HyprlandEvent, WorkspaceId};
+use crate::{Address, HyprlandEvent};
 
 /// Hyprland service errors
 #[derive(thiserror::Error, Debug)]
@@ -52,7 +52,7 @@ pub enum Error {
 
     /// Workspace not found
     #[error("workspace {0} not found")]
-    WorkspaceNotFound(WorkspaceId),
+    WorkspaceNotFound(String),
 
     /// Monitor not found
     #[error("monitor {0} not found")]

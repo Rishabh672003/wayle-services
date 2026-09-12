@@ -9,8 +9,7 @@ use wayle_core::Property;
 use wayle_traits::ServiceMonitoring;
 
 use crate::{
-    Address, BindData, CursorPosition, DeviceInfo, HyprlandEvent, Result, WorkspaceId,
-    WorkspaceRule,
+    Address, BindData, CursorPosition, DeviceInfo, HyprlandEvent, Result, WorkspaceRule,
     core::{client::Client, layer::Layer, monitor::Monitor, workspace::Workspace},
     discovery::HyprlandDiscovery,
     ipc::{DismissProps, HyprMessenger, OutputCommand, SetErrorCommand, events},
@@ -80,13 +79,13 @@ impl HyprlandService {
             .find(|client| client.address.get() == address)
     }
 
-    /// Returns a workspace by its ID if it exists.
-    #[instrument(skip(self), fields(id = %id))]
-    pub async fn workspace(&self, id: WorkspaceId) -> Option<Arc<Workspace>> {
+    /// Returns a workspace by its address (addressable name) if it exists.
+    #[instrument(skip(self), fields(address = %address))]
+    pub async fn workspace(&self, address: &str) -> Option<Arc<Workspace>> {
         self.workspaces
             .get()
             .into_iter()
-            .find(|workspace| workspace.id.get() == id)
+            .find(|workspace| workspace.address.get() == address)
     }
 
     /// Returns a monitor by its name if it exists.
@@ -244,7 +243,7 @@ impl HyprlandService {
         self.workspaces
             .get()
             .into_iter()
-            .find(|w| w.id.get() == workspace.id)
+            .find(|w| w.address.get() == workspace.address)
     }
 
     /// Returns the currently focused window if it exists.

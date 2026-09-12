@@ -90,7 +90,7 @@ pub use service::HyprlandService;
 pub(crate) use types::*;
 pub use types::{
     Address, BindData, CursorPosition, DeviceInfo, FocusHistoryId, MonitorId, ProcessId,
-    ScreencastOwner, WorkspaceId, WorkspaceInfo, WorkspaceRule,
+    ScreencastOwner, WorkspaceInfo, WorkspaceRule,
 };
 
 #[doc = include_str!("../README.md")]

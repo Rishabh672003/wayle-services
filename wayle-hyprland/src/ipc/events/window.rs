@@ -117,26 +117,20 @@ pub(crate) fn handle_move_window_v2(
 ) -> Result<()> {
     let event_data = format!("{event}>>{data}");
     let parts: Vec<&str> = data.split(',').collect();
-    let [address, workspace_id, workspace] = parts.as_slice() else {
+    let [address, workspace, workspace_name] = parts.as_slice() else {
         return Err(Error::EventParseError {
             event_data,
             field: "window_data",
-            expected: "3 comma-separated values (address,workspace_id,workspace)",
+            expected: "3 comma-separated values (address,workspace,workspace_name)",
             value: data.to_string(),
         });
     };
-    let workspace_id = workspace_id.parse().map_err(|_| Error::EventParseError {
-        event_data,
-        field: "workspace_id",
-        expected: "integer",
-        value: (*workspace_id).to_string(),
-    })?;
 
     let address = Address::new((*address).to_string());
     hyprland_tx.send(HyprlandEvent::MoveWindowV2 {
         address: address.clone(),
-        workspace_id,
         workspace: (*workspace).to_string(),
+        workspace_name: (*workspace_name).to_string(),
     })?;
 
     Ok(())
@@ -271,4 +265,39 @@ pub(crate) fn handle_minimized(
     })?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use tokio::sync::broadcast;
+
+    use super::*;
+
+    #[test]
+    fn move_window_v2_parses_workspace_selector_and_name() {
+        let (tx, mut rx) = broadcast::channel(1);
+        handle_move_window_v2("movewindowv2", "0x123,special:foo,Special", tx).unwrap();
+
+        assert!(matches!(
+            rx.try_recv().unwrap(),
+            HyprlandEvent::MoveWindowV2 { ref address, ref workspace, ref workspace_name }
+                if *address == Address::new("0x123".to_string())
+                    && workspace == "special:foo"
+                    && workspace_name == "Special"
+        ));
+    }
+
+    #[test]
+    fn move_window_v2_parses_legacy_workspace_id() {
+        let (tx, mut rx) = broadcast::channel(1);
+        handle_move_window_v2("movewindowv2", "0x123,3,3", tx).unwrap();
+
+        assert!(matches!(
+            rx.try_recv().unwrap(),
+            HyprlandEvent::MoveWindowV2 { ref address, ref workspace, ref workspace_name }
+                if *address == Address::new("0x123".to_string())
+                    && workspace == "3"
+                    && workspace_name == "3"
+        ));
+    }
 }
