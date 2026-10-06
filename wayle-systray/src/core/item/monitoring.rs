@@ -119,6 +119,30 @@ async fn monitor_properties(
         }
     };
 
+    let mut new_tool_tip = match item_proxy.receive_new_tool_tip().await {
+        Ok(stream) => stream,
+        Err(error) => {
+            error!(error = %error, "cannot subscribe to NewToolTip signal");
+            return;
+        }
+    };
+
+    let mut new_title = match item_proxy.receive_new_title().await {
+        Ok(stream) => stream,
+        Err(error) => {
+            error!(error = %error, "cannot subscribe to NewTitle signal");
+            return;
+        }
+    };
+
+    let mut new_status = match item_proxy.receive_new_status().await {
+        Ok(stream) => stream,
+        Err(error) => {
+            error!(error = %error, "cannot subscribe to NewStatus signal");
+            return;
+        }
+    };
+
     let mut new_menu = match item_proxy.receive_new_menu().await {
         Ok(stream) => stream,
         Err(error) => {
@@ -299,6 +323,24 @@ async fn monitor_properties(
                         Some(new_icon_theme_path)
                     };
                     tray_item.icon_theme_path.set(icon_theme_path);
+                }
+            }
+
+            Some(_) = new_tool_tip.next() => {
+                if let Ok(raw_tooltip) = item_proxy.tool_tip().await {
+                    tray_item.tooltip.set(Tooltip::from(raw_tooltip));
+                }
+            }
+
+            Some(_) = new_title.next() => {
+                if let Ok(title) = item_proxy.title().await {
+                    tray_item.title.set(title);
+                }
+            }
+
+            Some(signal) = new_status.next() => {
+                if let Ok(args) = signal.args() {
+                    tray_item.status.set(Status::from(args.status.as_str()));
                 }
             }
 
