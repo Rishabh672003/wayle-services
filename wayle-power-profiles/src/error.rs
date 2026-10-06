@@ -22,6 +22,10 @@ pub enum Error {
         expected: String,
     },
 
+    /// External command (pkexec auto-cpufreq) failed
+    #[error("power profile command failed: {0}")]
+    CommandFailed(String),
+
     /// Monitoring cannot start without a cancellation token
     #[error("cannot start monitoring: cancellation token was not provided")]
     MissingCancellationToken,

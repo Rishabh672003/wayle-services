@@ -16,6 +16,7 @@ use wayle_traits::{ModelMonitoring, Reactive};
 use zbus::Connection;
 
 use super::{
+    auto_cpufreq,
     error::Error,
     proxy::power_profiles::PowerProfilesProxy,
     types::profile::{
@@ -30,6 +31,8 @@ pub struct PowerProfiles {
     cancellation_token: Option<CancellationToken>,
     #[debug(skip)]
     zbus_connection: Connection,
+    /// Profiles are driven by auto-cpufreq instead of power-profiles-daemon.
+    auto_cpufreq: bool,
     /// Currently active profile.
     pub active_profile: Property<PowerProfile>,
     /// Performance degradation reason, if any.
@@ -58,13 +61,29 @@ impl Reactive for PowerProfiles {
 
     async fn get_live(context: Self::LiveContext<'_>) -> Result<Arc<Self>, Self::Error> {
         let power_profiles_props = Self::from_connection(context.connection).await?;
-        let power_profiles = Self::from_props(
+        let mut power_profiles = Self::from_props(
             power_profiles_props,
             context.connection,
             Some(context.cancellation_token.child_token()),
         );
 
+        if power_profiles.profiles.get().is_empty() && auto_cpufreq::is_running() {
+            power_profiles.auto_cpufreq = true;
+            power_profiles.profiles.set(auto_cpufreq::profiles());
+            power_profiles
+                .active_profile
+                .set(auto_cpufreq::read_profile());
+        }
+
         let power_profiles_arc = Arc::new(power_profiles);
+
+        if power_profiles_arc.auto_cpufreq {
+            auto_cpufreq::spawn_watch(
+                Arc::downgrade(&power_profiles_arc),
+                context.cancellation_token.child_token(),
+            );
+            return Ok(power_profiles_arc);
+        }
 
         power_profiles_arc.clone().start_monitoring().await?;
 
@@ -78,6 +97,11 @@ impl PowerProfiles {
     /// # Errors
     /// Returns error if profile setting fails.
     pub async fn set_active_profile(&self, profile: PowerProfile) -> Result<(), Error> {
+        if self.auto_cpufreq {
+            auto_cpufreq::set_profile(profile).await?;
+            self.active_profile.set(profile);
+            return Ok(());
+        }
         PowerProfilesController::set_active_profile(&self.zbus_connection, profile).await
     }
 
@@ -137,6 +161,7 @@ impl PowerProfiles {
     ) -> Self {
         Self {
             zbus_connection: connection.clone(),
+            auto_cpufreq: false,
             cancellation_token,
             active_profile: Property::new(PowerProfile::from(props.active_profile.as_str())),
             performance_degraded: Property::new(PerformanceDegradationReason::from(

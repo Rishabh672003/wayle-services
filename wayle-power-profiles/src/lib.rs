@@ -105,6 +105,7 @@
 //!
 //! - [`set_active_profile()`](PowerProfiles::set_active_profile) - Switch power profile
 
+mod auto_cpufreq;
 mod builder;
 mod error;
 mod proxy;
