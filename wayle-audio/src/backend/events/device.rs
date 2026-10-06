@@ -32,8 +32,17 @@ pub(crate) async fn handle_change(
             if removed_device.is_some() {
                 let _ = events_tx.send(AudioEvent::DeviceRemoved(device_key));
             }
+            let _ = command_tx.send(InternalRefresh::ServerInfo);
         }
-        Operation::New | Operation::Changed => {
+        Operation::New => {
+            let _ = command_tx.send(InternalRefresh::Device {
+                device_key,
+                facility,
+            });
+            // Server may have switched default to this device before it reached the store.
+            let _ = command_tx.send(InternalRefresh::ServerInfo);
+        }
+        Operation::Changed => {
             let _ = command_tx.send(InternalRefresh::Device {
                 device_key,
                 facility,

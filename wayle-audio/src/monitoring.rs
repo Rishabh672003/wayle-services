@@ -124,6 +124,12 @@ impl ServiceMonitoring for AudioService {
                                 if input_devs.remove(&key).is_some() {
                                     input_devices.set(input_devs.values().cloned().collect());
                                 }
+                                if default_output.get().is_some_and(|d| d.key == key) {
+                                    default_output.set(None);
+                                }
+                                if default_input.get().is_some_and(|d| d.key == key) {
+                                    default_input.set(None);
+                                }
                             }
 
                             AudioEvent::StreamAdded(info) => {
