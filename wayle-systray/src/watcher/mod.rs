@@ -9,12 +9,18 @@ use tokio::sync::{RwLock, broadcast};
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, instrument};
 use wayle_traits::ServiceMonitoring;
-use zbus::{Connection, fdo, message::Header, object_server::SignalEmitter};
+use zbus::{
+    Connection,
+    fdo::{self, DBusProxy},
+    message::Header,
+    names::BusName,
+    object_server::SignalEmitter,
+};
 
 use super::{
     error::Error,
     events::TrayEvent,
-    types::{PROTOCOL_VERSION, WATCHER_INTERFACE, WATCHER_OBJECT_PATH},
+    types::{ITEM_OBJECT_PATH, PROTOCOL_VERSION, WATCHER_INTERFACE, WATCHER_OBJECT_PATH},
 };
 
 #[derive(Debug)]
@@ -37,6 +43,17 @@ pub(crate) async fn register_item(
     connection: &Connection,
 ) -> bool {
     let service = service.to_string();
+
+    // The same object can be reachable under a well-known name and the owner's
+    // unique name (e.g. orphan scan vs. explicit registration). Keep one entry,
+    // preferring the well-known name so its release still unregisters the item.
+    if let Some(existing) = find_same_object(&service, registered_items, connection).await {
+        if service.starts_with(':') || !existing.starts_with(':') {
+            return false;
+        }
+        let _ =
+            monitoring::unregister_item(&existing, registered_items, event_tx, connection).await;
+    }
 
     {
         let mut items = registered_items.write().await;
@@ -62,6 +79,44 @@ pub(crate) async fn register_item(
         });
 
     true
+}
+
+/// Returns a registered entry that points at the same (owner, path) as `service`.
+async fn find_same_object(
+    service: &str,
+    registered_items: &Arc<RwLock<Vec<String>>>,
+    connection: &Connection,
+) -> Option<String> {
+    let dbus_proxy = DBusProxy::new(connection).await.ok()?;
+    let target = resolve_object(&dbus_proxy, service).await?;
+    let existing = registered_items.read().await.clone();
+
+    for entry in existing {
+        if entry != service && resolve_object(&dbus_proxy, &entry).await.as_ref() == Some(&target) {
+            return Some(entry);
+        }
+    }
+    None
+}
+
+/// Splits a registration (`name` or `name/path`) and resolves `name` to its unique owner.
+async fn resolve_object(dbus_proxy: &DBusProxy<'_>, service: &str) -> Option<(String, String)> {
+    let (name, path) = split_service(service);
+    if name.starts_with(':') {
+        return Some((name.to_string(), path.to_string()));
+    }
+    let owner = dbus_proxy
+        .get_name_owner(BusName::try_from(name).ok()?)
+        .await
+        .ok()?;
+    Some((owner.to_string(), path.to_string()))
+}
+
+fn split_service(service: &str) -> (&str, &str) {
+    match service.find('/') {
+        Some(index) => service.split_at(index),
+        None => (service, ITEM_OBJECT_PATH),
+    }
 }
 
 #[zbus::interface(name = "org.kde.StatusNotifierWatcher")]
@@ -177,5 +232,23 @@ impl StatusNotifierWatcher {
         watcher.start_monitoring().await?;
 
         Ok(watcher)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn split_service_defaults_to_item_path() {
+        assert_eq!(split_service(":1.5"), (":1.5", ITEM_OBJECT_PATH));
+        assert_eq!(
+            split_service(":1.5/org/ayatana/NotificationItem/x"),
+            (":1.5", "/org/ayatana/NotificationItem/x")
+        );
+        assert_eq!(
+            split_service("org.kde.StatusNotifierItem-42-1"),
+            ("org.kde.StatusNotifierItem-42-1", ITEM_OBJECT_PATH)
+        );
     }
 }

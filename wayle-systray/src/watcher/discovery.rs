@@ -6,7 +6,9 @@ use tracing::{debug, info, warn};
 use zbus::{Connection, fdo::DBusProxy, names::OwnedBusName};
 
 use super::register_item;
-use crate::{events::TrayEvent, proxy::status_notifier_item::StatusNotifierItemProxy};
+use crate::{
+    events::TrayEvent, proxy::status_notifier_item::StatusNotifierItemProxy, types::item::Status,
+};
 
 const PROBE_TIMEOUT: Duration = Duration::from_millis(500);
 
@@ -112,14 +114,35 @@ async fn is_registered(items: &Arc<RwLock<Vec<String>>>, bus_name: &str) -> bool
         .any(|registered| registered == bus_name || registered.starts_with(&prefix))
 }
 
+/// True when `bus_name` exposes an SNI item that wants to be shown.
 async fn probe_sni(connection: &Connection, bus_name: &str) -> bool {
     let probe = async {
         let proxy = StatusNotifierItemProxy::builder(connection)
             .destination(bus_name)?
             .build()
             .await?;
-        proxy.id().await
+        proxy.status().await
     };
 
-    matches!(tokio::time::timeout(PROBE_TIMEOUT, probe).await, Ok(Ok(_)))
+    match tokio::time::timeout(PROBE_TIMEOUT, probe).await {
+        Ok(Ok(status)) => wants_recovery(&status),
+        _ => false,
+    }
+}
+
+/// Passive items never registered (or asked to be hidden), so leave them alone.
+fn wants_recovery(status: &str) -> bool {
+    Status::from(status) != Status::Passive
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn passive_candidate_is_not_recovered() {
+        assert!(!wants_recovery("Passive"));
+        assert!(wants_recovery("Active"));
+        assert!(wants_recovery("NeedsAttention"));
+    }
 }
