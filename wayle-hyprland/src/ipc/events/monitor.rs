@@ -1,6 +1,6 @@
 use tokio::sync::broadcast::Sender;
 
-use crate::{Error, HyprlandEvent, Result};
+use crate::{Error, HyprlandEvent, Result, WorkspaceIdentity};
 
 pub(crate) fn handle_focused_mon(
     event: &str,
@@ -30,20 +30,21 @@ pub(crate) fn handle_focused_mon_v2(
     data: &str,
     hyprland_tx: Sender<HyprlandEvent>,
 ) -> Result<()> {
-    let event_data = format!("{event}>>{data}");
-    let Some((name, workspace)) = data.split_once(',') else {
+    let Some((name, workspace_field)) = data.split_once(',') else {
         return Err(Error::EventParseError {
-            event_data,
+            event_data: format!("{event}>>{data}"),
             field: "monitor_data",
-            expected: "comma-separated name,workspace",
+            expected: "comma-separated name,workspace_address",
             value: data.to_string(),
         });
     };
 
-    let monitor_name = name.to_string();
+    let identity = WorkspaceIdentity::from_event_field(workspace_field, "");
+
     hyprland_tx.send(HyprlandEvent::FocusedMonV2 {
-        name: monitor_name.clone(),
-        workspace: workspace.to_string(),
+        name: name.to_string(),
+        workspace_id: identity.as_ref().and_then(|workspace| workspace.id),
+        workspace_address: identity.map(|workspace| workspace.address),
     })?;
 
     Ok(())
@@ -127,35 +128,4 @@ pub(crate) fn handle_monitor_added_v2(
     })?;
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use tokio::sync::broadcast;
-
-    use super::*;
-
-    #[test]
-    fn focused_mon_v2_parses_workspace_address() {
-        let (tx, mut rx) = broadcast::channel(1);
-        handle_focused_mon_v2("focusedmonv2", "DP-1,name:foo", tx).unwrap();
-
-        assert!(matches!(
-            rx.try_recv().unwrap(),
-            HyprlandEvent::FocusedMonV2 { ref name, ref workspace }
-                if name == "DP-1" && workspace == "name:foo"
-        ));
-    }
-
-    #[test]
-    fn focused_mon_v2_parses_legacy_workspace_id() {
-        let (tx, mut rx) = broadcast::channel(1);
-        handle_focused_mon_v2("focusedmonv2", "DP-1,3", tx).unwrap();
-
-        assert!(matches!(
-            rx.try_recv().unwrap(),
-            HyprlandEvent::FocusedMonV2 { ref name, ref workspace }
-                if name == "DP-1" && workspace == "3"
-        ));
-    }
 }

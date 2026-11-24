@@ -1,15 +1,23 @@
 use wayle_core::Property;
 
-use crate::{Address, MonitorId, WorkspaceData};
+use crate::{
+    Address, MonitorId, WorkspaceAddress, WorkspaceData, WorkspaceId, WorkspaceIdentity,
+    WorkspaceKind,
+};
 
 /// A Hyprland workspace with reactive state.
+///
+/// Two workspaces are equal when their addresses match.
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct Workspace {
-    /// Stable workspace identity (addressable name). Survives renames.
-    pub address: Property<String>,
-    /// Workspace kind: `numbered`, `named` or `special`.
-    pub kind: Property<String>,
-    /// Workspace display name.
+    /// Workspace number, present only for numbered workspaces.
+    pub id: Property<Option<WorkspaceId>>,
+    /// Workspace address.
+    pub address: Property<WorkspaceAddress>,
+    /// Regular or special workspace.
+    pub kind: Property<WorkspaceKind>,
+    /// Workspace name.
     pub name: Property<String>,
     /// Monitor name this workspace is on.
     pub monitor: Property<String>,
@@ -36,10 +44,11 @@ impl PartialEq for Workspace {
 }
 
 impl Workspace {
-    pub(crate) fn from_props(workspace_data: WorkspaceData) -> Self {
+    pub(crate) fn from_props(identity: WorkspaceIdentity, workspace_data: WorkspaceData) -> Self {
         Self {
-            address: Property::new(workspace_data.address),
-            kind: Property::new(workspace_data.kind),
+            id: Property::new(identity.id),
+            address: Property::new(identity.address),
+            kind: Property::new(identity.kind),
             name: Property::new(workspace_data.name),
             monitor: Property::new(workspace_data.monitor),
             monitor_id: Property::new(workspace_data.monitor_id),
@@ -52,9 +61,10 @@ impl Workspace {
         }
     }
 
-    pub(crate) fn update(&self, workspace_data: WorkspaceData) {
-        self.address.set(workspace_data.address);
-        self.kind.set(workspace_data.kind);
+    pub(crate) fn update(&self, identity: WorkspaceIdentity, workspace_data: WorkspaceData) {
+        self.id.set(identity.id);
+        self.address.set(identity.address);
+        self.kind.set(identity.kind);
         self.name.set(workspace_data.name);
         self.monitor.set(workspace_data.monitor);
         self.monitor_id.set(workspace_data.monitor_id);

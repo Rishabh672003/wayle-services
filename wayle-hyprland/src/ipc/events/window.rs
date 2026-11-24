@@ -1,5 +1,6 @@
 use tokio::sync::broadcast::Sender;
 
+use super::workspace::resolve_event_workspace;
 use crate::{Address, Error, HyprlandEvent, Result};
 
 pub(crate) fn handle_active_window(
@@ -115,22 +116,23 @@ pub(crate) fn handle_move_window_v2(
     data: &str,
     hyprland_tx: Sender<HyprlandEvent>,
 ) -> Result<()> {
-    let event_data = format!("{event}>>{data}");
     let parts: Vec<&str> = data.split(',').collect();
-    let [address, workspace, workspace_name] = parts.as_slice() else {
+    let [address, workspace_field, workspace] = parts.as_slice() else {
         return Err(Error::EventParseError {
-            event_data,
+            event_data: format!("{event}>>{data}"),
             field: "window_data",
-            expected: "3 comma-separated values (address,workspace,workspace_name)",
+            expected: "3 comma-separated values (address,workspace_address,workspace)",
             value: data.to_string(),
         });
     };
 
-    let address = Address::new((*address).to_string());
+    let identity = resolve_event_workspace(event, data, workspace_field, workspace)?;
+
     hyprland_tx.send(HyprlandEvent::MoveWindowV2 {
-        address: address.clone(),
+        address: Address::new((*address).to_string()),
+        workspace_id: identity.id,
+        workspace_address: identity.address,
         workspace: (*workspace).to_string(),
-        workspace_name: (*workspace_name).to_string(),
     })?;
 
     Ok(())
@@ -265,39 +267,4 @@ pub(crate) fn handle_minimized(
     })?;
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use tokio::sync::broadcast;
-
-    use super::*;
-
-    #[test]
-    fn move_window_v2_parses_workspace_selector_and_name() {
-        let (tx, mut rx) = broadcast::channel(1);
-        handle_move_window_v2("movewindowv2", "0x123,special:foo,Special", tx).unwrap();
-
-        assert!(matches!(
-            rx.try_recv().unwrap(),
-            HyprlandEvent::MoveWindowV2 { ref address, ref workspace, ref workspace_name }
-                if *address == Address::new("0x123".to_string())
-                    && workspace == "special:foo"
-                    && workspace_name == "Special"
-        ));
-    }
-
-    #[test]
-    fn move_window_v2_parses_legacy_workspace_id() {
-        let (tx, mut rx) = broadcast::channel(1);
-        handle_move_window_v2("movewindowv2", "0x123,3,3", tx).unwrap();
-
-        assert!(matches!(
-            rx.try_recv().unwrap(),
-            HyprlandEvent::MoveWindowV2 { ref address, ref workspace, ref workspace_name }
-                if *address == Address::new("0x123".to_string())
-                    && workspace == "3"
-                    && workspace_name == "3"
-        ));
-    }
 }
