@@ -258,7 +258,7 @@ async fn handle_player_removed(
 fn should_ignore(bus_name: &str, ignored_patterns: &[String]) -> bool {
     ignored_patterns
         .iter()
-        .any(|pattern| bus_name.contains(pattern))
+        .any(|pattern| bus_name.contains(pattern) || crate::glob::matches(pattern, bus_name))
 }
 
 #[cfg(test)]
@@ -295,5 +295,16 @@ mod tests {
         let bus_name = "org.mpris.MediaPlayer2.chromium.instance123";
 
         assert!(should_ignore(bus_name, &patterns));
+    }
+
+    #[test]
+    fn should_ignore_matches_glob_pattern() {
+        let patterns = vec![String::from("*playerctld*")];
+
+        assert!(should_ignore("org.mpris.MediaPlayer2.playerctld", &patterns));
+        assert!(!should_ignore(
+            "org.mpris.MediaPlayer2.firefox.instance_1_532",
+            &patterns
+        ));
     }
 }
