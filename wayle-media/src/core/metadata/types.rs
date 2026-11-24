@@ -85,15 +85,18 @@ impl TrackProperties {
         Self::as_string(value)
     }
 
+    // Live streams (e.g. Firefox on Twitch) report i64::MAX as their length.
     fn duration(value: &OwnedValue) -> Option<Duration> {
         if let Ok(length) = i64::try_from(value.clone())
             && length > 0
+            && length < i64::MAX
         {
             return Some(Duration::from_micros(length as u64));
         }
 
         if let Ok(length) = u64::try_from(value.clone())
             && length > 0
+            && length < i64::MAX as u64
         {
             return Some(Duration::from_micros(length));
         }
@@ -326,6 +329,15 @@ mod tests {
         let result = TrackProperties::duration(&value);
 
         assert_eq!(result, None);
+    }
+
+    #[test]
+    fn duration_with_live_stream_sentinel_returns_none() {
+        let value = Value::I64(i64::MAX).try_to_owned().unwrap();
+        assert_eq!(TrackProperties::duration(&value), None);
+
+        let value = Value::U64(u64::MAX).try_to_owned().unwrap();
+        assert_eq!(TrackProperties::duration(&value), None);
     }
 
     #[test]
